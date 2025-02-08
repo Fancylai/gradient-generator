@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>COM-Gradient</title>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -209,10 +210,10 @@
 
         let config = {
             colors: [
-                { color: '#ff0000', position: 0 },
-                { color: '#00ff00', position: 33 },
-                { color: '#0000ff', position: 66 },
-                { color: '#8800ff', position: 100 }
+                { color: '#FFFFFF', position: 0 },
+                { color: '#1366EC', position: 33 },
+                { color: '#5F13EC', position: 66 },
+                { color: '#FF00DD', position: 100 }
             ],
             speed: 5,
             blur: 100,
@@ -478,19 +479,26 @@
             const ctx = canvas.getContext('2d');
     
             // 创建和预览区完全一致的渐变
-            const gradientColors = config.colors.map(c => `${c.color} ${c.position}%`).join(', ');
-            const tempDiv = document.createElement('div');
-            tempDiv.style.width = width + 'px';
-            tempDiv.style.height = height + 'px';
-            tempDiv.style.background = `linear-gradient(45deg, ${gradientColors})`;
-            tempDiv.style.backgroundSize = '400% 400%';
-            tempDiv.style.filter = `blur(${config.blur}px)`;
+            const baseGradients = [
+                `linear-gradient(${45 + Math.random() * config.randomness}deg, ${config.colors.map(c => 
+                    `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ')})`,
+                `radial-gradient(circle at ${50 + Math.random() * config.randomness}% ${50 + Math.random() * config.randomness}%, ${config.colors.map(c => 
+                    `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ')})`,
+                `linear-gradient(${135 + Math.random() * config.randomness}deg, ${config.colors.map(c => 
+                    `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ')})`,
+                `radial-gradient(circle at ${30 + Math.random() * config.randomness}% ${70 + Math.random() * config.randomness}%, ${config.colors.map(c => 
+                    `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ')})`
+            ].join(',');
             
             // 将当前动画状态转换为图片
             const data = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
                 <foreignObject width="100%" height="100%">
                     <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%;">
-                        <div style="width: 100%; height: 100%; background: linear-gradient(45deg, ${gradientColors}); background-size: 400% 400%; filter: blur(${config.blur}px);"></div>
+                        <div style="width: 100%; height: 100%; 
+                            background: ${baseGradients}; 
+                            background-size: 400% 400%; 
+                            background-blend-mode: overlay;
+                            filter: blur(${config.blur}px) contrast(150%) saturate(120%);"></div>
                     </div>
                 </foreignObject>
             </svg>`;
