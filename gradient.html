@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COM-Gradient</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f5f5f5;
+            min-height: 100vh;
+            padding: 32px;
+        }
+
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .navbar {
+            background: white;
+            padding: 24px 32px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 24px rgba(0, 0, 0, 0.06);
+        }
+
+        .navbar h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #000000;
+            letter-spacing: -0.5px;
+        }
+
+        .content {
+            display: flex;
+            gap: 24px;
+        }
+
+        .left-panel {
+            flex: 0 0 360px;
+            background: white;
+            padding: 32px;
+            border-radius: 16px;
+            box-shadow: 0 2px 24px rgba(0, 0, 0, 0.06);
+        }
+
+        .right-panel {
+            flex: 1;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 2px 24px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+            min-height: 400px;
+        }
+
+        .preview {
+            width: 100%;
+            height: 100%;
+            min-height: 400px;
+        }
+
+        .color-input {
+            width: 56px;
+            height: 56px;
+            padding: 0;
+            border: 2px solid #f5f5f7;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 8px;
+        }
+
+        .color-input:hover {
+            transform: scale(1.05);
+        }
+
+        .range-slider {
+            width: 100%;
+            margin: 10px 0 24px;
+            -webkit-appearance: none;
+            height: 4px;
+            background: #f5f5f7;
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #000000;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .range-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .export-button {
+            flex: 1;
+            padding: 16px;
+            background-color: #000000;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <nav class="navbar">
+            <h1>COM-Gradient</h1>
+        </nav>
+        <div class="content">
+            <div class="left-panel">
+                <div>
+                    <label class="label">渐变颜色</label>
+                    <div class="color-controls">
+                        <div id="colorInputs"></div>
+                    </div>
+                </div>
+                <div>
+                    <label class="label">动画速度 (<span id="speedValue">5</span>s)</label>
+                    <input type="range" class="range-slider" id="speedSlider" min="1" max="20" value="5">
+                </div>
+                <div>
+                    <label class="label">模糊效果 (<span id="blurValue">100</span>px)</label>
+                    <input type="range" class="range-slider" id="blurSlider" min="0" max="200" value="100">
+                </div>
+                <div>
+                    <label class="label">动画随机程度 (<span id="randomValue">0</span>%)</label>
+                    <input type="range" class="range-slider" id="randomSlider" min="0" max="100" value="0">
+                </div>
+                <div class="export-buttons">
+                    <button class="export-button" onclick="exportCSS()">导出 CSS</button>
+                    <button class="export-button" onclick="exportImage()">导出图片</button>
+                </div>
+            </div>
+            <div class="right-panel">
+                <div id="preview" class="preview"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const noise = {
+            grad3: new Float64Array([1,1,0,-1,1,0,1,-1,0,-1,-1,0,
+                                   1,0,1,-1,0,1,1,0,-1,-1,0,-1,
+                                   0,1,1,0,-1,1,0,1,-1,0,-1,-1]),
+            p: new Uint8Array(256),
+            perm: new Uint8Array(512),
+            init() {
+                for (let i = 0; i < 256; i++) this.p[i] = i;
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.p[i], this.p[j]] = [this.p[j], this.p[i]];
+                }
+                for (let i = 0; i < 512; i++) {
+                    this.perm[i] = this.p[i & 255];
+                }
+            },
+            perlin(x, y, z) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+                const Z = Math.floor(z) & 255;
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+                z -= Math.floor(z);
+                const u = this.fade(x);
+                const v = this.fade(y);
+                const w = this.fade(z);
+                const A = this.perm[X]+Y;
+                const AA = this.perm[A]+Z;
+                const AB = this.perm[A+1]+Z;
+                const B = this.perm[X+1]+Y;
+                const BA = this.perm[B]+Z;
+                const BB = this.perm[B+1]+Z;
+                return this.lerp(w, this.lerp(v, this.lerp(u, this.grad(this.perm[AA], x, y, z),
+                    this.grad(this.perm[BA], x-1, y, z)),
+                    this.lerp(u, this.grad(this.perm[AB], x, y-1, z),
+                    this.grad(this.perm[BB], x-1, y-1, z))),
+                    this.lerp(v, this.lerp(u, this.grad(this.perm[AA+1], x, y, z-1),
+                    this.grad(this.perm[BA+1], x-1, y, z-1)),
+                    this.lerp(u, this.grad(this.perm[AB+1], x, y-1, z-1),
+                    this.grad(this.perm[BB+1], x-1, y-1, z-1))));
+            },
+            fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); },
+            lerp(t, a, b) { return a + t * (b - a); },
+            grad(hash, x, y, z) {
+                const h = hash & 15;
+                return x * this.grad3[h*3] + y * this.grad3[h*3+1] + z * this.grad3[h*3+2];
+            }
+        };
+        noise.init();
+
+        let config = {
+            colors: [
+                { color: '#ff0000', position: 0 },
+                { color: '#00ff00', position: 33 },
+                { color: '#0000ff', position: 66 },
+                { color: '#8800ff', position: 100 }
+            ],
+            speed: 5,
+            blur: 100,
+            randomness: 0,
+            distortion: 50
+        };
+
+        // 删除这段代码
+        // const controlsHtml = `...`;
+        // document.querySelector('.left-panel').innerHTML = controlsHtml + document.querySelector('.left-panel').innerHTML;
+
+        // 删除这段代码
+        // const distortionControl = document.createElement('div');
+        // distortionControl.innerHTML = `...`;
+        // document.querySelector('.export-buttons').insertAdjacentElement('beforebegin', distortionControl);
+
+        // 在 export-buttons 前添加扭曲度控制
+        const distortionControl = document.createElement('div');
+        distortionControl.innerHTML = `
+            <div>
+                <label class="label">颜色扭曲程度 (<span id="distortionValue">50</span>%)</label>
+                <input type="range" class="range-slider" id="distortionSlider" min="0" max="100" value="50">
+            </div>
+        `;
+        document.querySelector('.export-buttons').insertAdjacentElement('beforebegin', distortionControl);
+
+        // 添加扭曲度滑块事件监听
+        document.getElementById('distortionSlider').oninput = function() {
+            config.distortion = parseInt(this.value);
+            document.getElementById('distortionValue').textContent = this.value;
+            updatePreview();
+        };
+
+        function updatePreview() {
+            const preview = document.getElementById('preview');
+            const gradientColors = config.colors.map(c => `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ');
+            
+            // 创建多层渐变背景，每层使用不同的扭曲效果
+            const baseGradients = [
+                `linear-gradient(${45 + Math.random() * config.randomness}deg, ${config.colors.map(c => 
+                    `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ')})`,
+                `radial-gradient(circle at ${50 + Math.random() * config.randomness}% ${50 + Math.random() * config.randomness}%, ${config.colors.map(c => 
+                    `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ')})`,
+                `linear-gradient(${135 + Math.random() * config.randomness}deg, ${config.colors.map(c => 
+                    `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ')})`,
+                `radial-gradient(circle at ${30 + Math.random() * config.randomness}% ${70 + Math.random() * config.randomness}%, ${config.colors.map(c => 
+                    `${c.color} ${c.position + Math.random() * c.distortion * config.randomness / 100}%`).join(', ')})`
+            ].join(',');
+            
+            preview.style.background = baseGradients;
+            preview.style.backgroundBlendMode = 'overlay';
+            preview.style.backgroundSize = '400% 400%';
+            preview.style.animation = `gradient-main ${config.speed}s ease infinite`;
+            preview.style.filter = `blur(${config.blur}px) contrast(150%) saturate(120%)`;
+
+            let style = document.getElementById('preview-style');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'preview-style';
+                document.head.appendChild(style);
+            }
+
+            style.textContent = `
+                @keyframes gradient-main {
+                    0%, 100% { background-position: 
+                        ${Math.random() * config.randomness}% ${Math.random() * config.randomness}%,
+                        ${Math.random() * config.randomness}% ${Math.random() * config.randomness}%,
+                        ${Math.random() * config.randomness}% ${Math.random() * config.randomness}%,
+                        ${Math.random() * config.randomness}% ${Math.random() * config.randomness}%
+                    }
+                    50% { background-position: 
+                        ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}%,
+                        ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}%,
+                        ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}%,
+                        ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}%
+                    }
+                }
+            `;
+        }
+
+        function updateColor(index, color) {
+            config.colors[index].color = color;
+            updatePreview();
+        }
+
+        function updatePosition(index, position) {
+            config.colors[index].position = parseInt(position);
+            updatePreview();
+        }
+
+        // 删除 controlsHtml 相关代码
+        function initColorInputs() {
+            const container = document.getElementById('colorInputs');
+            container.innerHTML = ''; // 清空容器
+            config.colors.forEach((colorObj, index) => {
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                colorInput.className = 'color-input';
+                colorInput.value = colorObj.color;
+                colorInput.onchange = (e) => updateColor(index, e.target.value);
+                container.appendChild(colorInput);
+        
+                const rangeInput = document.createElement('input');
+                rangeInput.type = 'range';
+                rangeInput.className = 'range-slider';
+                rangeInput.min = 0;
+                rangeInput.max = 100;
+                rangeInput.value = colorObj.position;
+                rangeInput.onchange = (e) => updatePosition(index, e.target.value);
+                container.appendChild(rangeInput);
+            });
+        }
+
+        function updatePreview() {
+            const preview = document.getElementById('preview');
+            const gradientColors = config.colors.map(c => `${c.color} ${c.position}%`).join(', ');
+            
+            preview.style.position = 'relative';
+            preview.style.overflow = 'hidden';
+            
+            // 创建多层渐变背景
+            const baseGradients = [
+                `linear-gradient(${45 + Math.random() * config.randomness}deg, ${gradientColors})`,
+                `radial-gradient(circle at ${50 + Math.random() * config.randomness}% ${50 + Math.random() * config.randomness}%, ${gradientColors})`,
+                `linear-gradient(${135 + Math.random() * config.randomness}deg, ${gradientColors})`,
+                `radial-gradient(circle at ${30 + Math.random() * config.randomness}% ${70 + Math.random() * config.randomness}%, ${gradientColors})`
+            ].join(',');
+            
+            preview.style.background = baseGradients;
+            preview.style.backgroundBlendMode = 'overlay';
+            preview.style.backgroundSize = '400% 400%';
+            preview.style.animation = `gradient-main ${config.speed}s ease infinite`;
+            preview.style.filter = `blur(${config.blur}px)`;
+
+            let style = document.getElementById('preview-style');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'preview-style';
+                document.head.appendChild(style);
+            }
+
+            style.textContent = `
+                @keyframes gradient-main {
+                    0%, 100% { background-position: 
+                        ${Math.random() * config.randomness}% ${Math.random() * config.randomness}%,
+                        ${Math.random() * config.randomness}% ${Math.random() * config.randomness}%,
+                        ${Math.random() * config.randomness}% ${Math.random() * config.randomness}%,
+                        ${Math.random() * config.randomness}% ${Math.random() * config.randomness}%
+                    }
+                    50% { background-position: 
+                        ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}%,
+                        ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}%,
+                        ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}%,
+                        ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}%
+                    }
+                }
+            `;
+        }
+
+        function exportCSS() {
+            const gradientColors = config.colors.map(c => `${c.color} ${c.position}%`).join(', ');
+            const css = `
+    .gradient-background {
+        position: relative;
+        overflow: hidden;
+        background: 
+            linear-gradient(45deg, ${gradientColors}),
+            radial-gradient(circle at 50% 50%, ${gradientColors});
+        background-blend-mode: overlay;
+        background-size: 200% 200%;
+        animation: gradient-main ${config.speed}s ease infinite;
+        filter: blur(${config.blur}px);
+    }
+    
+    ${angles.map((angle, i) => `
+    .gradient-background::before${i ? i + 1 : ''} {
+        content: '';
+        position: absolute;
+        inset: -50%;
+        background: 
+            linear-gradient(${angle + Math.random() * config.randomness}deg, ${gradientColors}),
+            radial-gradient(circle at ${50 + Math.random() * config.randomness}% ${50 + Math.random() * config.randomness}%, ${gradientColors});
+        background-size: 200% 200%;
+        animation: gradient-overlay-${i} ${config.speed * (1 + i * 0.5)}s ease-in-out infinite;
+        opacity: ${0.4 / (i + 1)};
+        mix-blend-mode: overlay;
+        pointer-events: none;
+        transform: rotate(${Math.random() * 360}deg);
+        filter: contrast(150%) saturate(150%);
+    }
+    `).join('\n')}
+    
+    @keyframes gradient-main {
+        0%, 100% { background-position: ${0 + Math.random() * config.randomness}% ${0 + Math.random() * config.randomness}% }
+        25% { background-position: ${100 + Math.random() * config.randomness}% ${0 + Math.random() * config.randomness}% }
+        50% { background-position: ${100 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}% }
+        75% { background-position: ${0 + Math.random() * config.randomness}% ${100 + Math.random() * config.randomness}% }
+    }
+    
+    ${angles.map((_, i) => `
+    @keyframes gradient-overlay-${i} {
+        0%, 100% { 
+            transform: translate(${-25 + Math.random() * config.randomness}%, ${-25 + Math.random() * config.randomness}%) 
+            rotate(${Math.random() * 360}deg) scale(${1 + Math.random() * 0.2});
+        }
+        50% { 
+            transform: translate(${25 + Math.random() * config.randomness}%, ${25 + Math.random() * config.randomness}%) 
+            rotate(${180 + Math.random() * 360}deg) scale(${1.2 + Math.random() * 0.2});
+        }
+    }`).join('\n')}`.trim();
+            const blob = new Blob([css], { type: 'text/css' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'gradient.css';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 初始化滑块事件监听
+        document.getElementById('speedSlider').oninput = function() {
+            config.speed = parseInt(this.value);
+            document.getElementById('speedValue').textContent = this.value;
+            updatePreview();
+        };
+
+        document.getElementById('blurSlider').oninput = function() {
+            config.blur = parseInt(this.value);
+            document.getElementById('blurValue').textContent = this.value;
+            updatePreview();
+        };
+
+        document.getElementById('randomSlider').oninput = function() {
+            config.randomness = parseInt(this.value);
+            document.getElementById('randomValue').textContent = this.value;
+            updatePreview();
+        };
+
+        // 初始化
+        initColorInputs();
+        updatePreview();
+
+        // 添加动画样式
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes gradient {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+        `;
+        document.head.appendChild(style);
+
+        function exportImage() {
+            const preview = document.getElementById('preview');
+            const canvas = document.createElement('canvas');
+            const width = 1920;
+            const height = 1080;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+    
+            // 创建和预览区完全一致的渐变
+            const gradientColors = config.colors.map(c => `${c.color} ${c.position}%`).join(', ');
+            const tempDiv = document.createElement('div');
+            tempDiv.style.width = width + 'px';
+            tempDiv.style.height = height + 'px';
+            tempDiv.style.background = `linear-gradient(45deg, ${gradientColors})`;
+            tempDiv.style.backgroundSize = '400% 400%';
+            tempDiv.style.filter = `blur(${config.blur}px)`;
+            
+            // 将当前动画状态转换为图片
+            const data = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+                <foreignObject width="100%" height="100%">
+                    <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%;">
+                        <div style="width: 100%; height: 100%; background: linear-gradient(45deg, ${gradientColors}); background-size: 400% 400%; filter: blur(${config.blur}px);"></div>
+                    </div>
+                </foreignObject>
+            </svg>`;
+    
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'gradient.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 'image/png');
+            };
+            img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data);
+        }
+    </script>
+</body>
+</html>
